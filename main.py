@@ -204,6 +204,165 @@ async def send_plot(ctx, hours: int = 24):
     )
     plt.close()
 
+# Method 2: Using Pandas rolling window
+@bot.command(name="plot_rolling")
+async def send_plot_rolling(ctx, hours: int = 24, window: int = 5):
+    """Generate and send a plot with rolling average smoothing
+    
+    Parameters:
+    - hours: Number of hours to display data for
+    - window: Window size for rolling average (default: 5)
+    """
+    if not sensor_data:
+        await ctx.send("No data available to plot!")
+        return
+    
+    # Convert to DataFrame for easier manipulation
+    df = pd.DataFrame(sensor_data)
+    
+    # Filter data for requested time period
+    cutoff_time = pd.Timestamp.now() - pd.Timedelta(hours=hours)
+    df = df[df["time"] >= cutoff_time]
+    
+    if df.empty or len(df) < window:
+        await ctx.send(f"Not enough data available for the last {hours} hours to use window size {window}.")
+        return
+    
+    # Sort by time
+    df = df.sort_values("time")
+    
+    # Calculate rolling averages
+    df['temp_smooth'] = df['temp'].rolling(window=window, center=True).mean()
+    df['hum_smooth'] = df['hum'].rolling(window=window, center=True).mean()
+    
+    # Forward fill NaN values at the edges
+    df['temp_smooth'] = df['temp_smooth'].fillna(method='ffill').fillna(method='bfill')
+    df['hum_smooth'] = df['hum_smooth'].fillna(method='ffill').fillna(method='bfill')
+    
+    # Create plot
+    plt.figure(figsize=(10, 6))
+    
+    # Plot temperature
+    ax1 = plt.gca()
+    ax1.plot(df["time"], df["temp"], 'r-', alpha=0.3, label="Raw Temperature (°C)")
+    ax1.plot(df["time"], df["temp_smooth"], 'r-', linewidth=2, label="Smoothed Temperature (°C)")
+    ax1.set_ylabel("Temperature (°C)", color='r')
+    ax1.tick_params(axis='y', labelcolor='r')
+    
+    # Plot humidity on secondary y-axis
+    ax2 = ax1.twinx()
+    ax2.plot(df["time"], df["hum"], 'b-', alpha=0.3, label="Raw Humidity (%)")
+    ax2.plot(df["time"], df["hum_smooth"], 'b-', linewidth=2, label="Smoothed Humidity (%)")
+    ax2.set_ylabel("Humidity (%)", color='b')
+    ax2.tick_params(axis='y', labelcolor='b')
+    
+    # Add title and formatting
+    plt.title(f"Weather Data - Last {hours} Hours (Rolling Average, Window={window})")
+    plt.grid(True, alpha=0.3)
+    
+    # Format x-axis to show readable dates
+    plt.gcf().autofmt_xdate()
+    
+    # Add legend
+    lines1, labels1 = ax1.get_legend_handles_labels()
+    lines2, labels2 = ax2.get_legend_handles_labels()
+    ax1.legend(lines1 + lines2, labels1 + labels2, loc='upper left')
+    
+    # Save to buffer
+    buf = BytesIO()
+    plt.tight_layout()
+    plt.savefig(buf, format='png', dpi=100)
+    buf.seek(0)
+    
+    # Send file
+    await ctx.send(
+        f"📊 **Smoothed weather data (rolling average) for the last {hours} hours:**", 
+        file=discord.File(buf, "weather_rolling.png")
+    )
+    plt.close()
+
+@bot.command(name="plot_savgol")
+async def send_plot_savgol(ctx, hours: int = 24, window: int = 7, poly: int = 3):
+    """Generate and send a plot with Savitzky-Golay smoothing
+    
+    Parameters:
+    - hours: Number of hours to display data for
+    - window: Window size (must be odd, default: 7)
+    - poly: Polynomial order (default: 3)
+    """
+    if not sensor_data:
+        await ctx.send("No data available to plot!")
+        return
+    
+    # Make sure window is odd
+    if window % 2 == 0:
+        window = window + 1
+    
+    # Convert to DataFrame for easier manipulation
+    df = pd.DataFrame(sensor_data)
+    
+    # Filter data for requested time period
+    cutoff_time = pd.Timestamp.now() - pd.Timedelta(hours=hours)
+    df = df[df["time"] >= cutoff_time]
+    
+    if df.empty or len(df) <= window:
+        await ctx.send(f"Not enough data available for the last {hours} hours to use window size {window}.")
+        return
+    
+    # Sort by time
+    df = df.sort_values("time")
+    
+    try:
+        from scipy.signal import savgol_filter
+        
+        # Apply Savitzky-Golay filter
+        df['temp_smooth'] = savgol_filter(df['temp'], window_length=window, polyorder=poly)
+        df['hum_smooth'] = savgol_filter(df['hum'], window_length=window, polyorder=poly)
+        
+        # Create plot
+        plt.figure(figsize=(10, 6))
+        
+        # Plot temperature
+        ax1 = plt.gca()
+        ax1.plot(df["time"], df["temp"], 'r-', alpha=0.3, label="Raw Temperature (°C)")
+        ax1.plot(df["time"], df["temp_smooth"], 'r-', linewidth=2, label="Smoothed Temperature (°C)")
+        ax1.set_ylabel("Temperature (°C)", color='r')
+        ax1.tick_params(axis='y', labelcolor='r')
+        
+        # Plot humidity on secondary y-axis
+        ax2 = ax1.twinx()
+        ax2.plot(df["time"], df["hum"], 'b-', alpha=0.3, label="Raw Humidity (%)")
+        ax2.plot(df["time"], df["hum_smooth"], 'b-', linewidth=2, label="Smoothed Humidity (%)")
+        ax2.set_ylabel("Humidity (%)", color='b')
+        ax2.tick_params(axis='y', labelcolor='b')
+        
+        # Add title and formatting
+        plt.title(f"Weather Data - Last {hours} Hours (Savitzky-Golay, Window={window})")
+        plt.grid(True, alpha=0.3)
+        
+        # Format x-axis to show readable dates
+        plt.gcf().autofmt_xdate()
+        
+        # Add legend
+        lines1, labels1 = ax1.get_legend_handles_labels()
+        lines2, labels2 = ax2.get_legend_handles_labels()
+        ax1.legend(lines1 + lines2, labels1 + labels2, loc='upper left')
+        
+        # Save to buffer
+        buf = BytesIO()
+        plt.tight_layout()
+        plt.savefig(buf, format='png', dpi=100)
+        buf.seek(0)
+        
+        # Send file
+        await ctx.send(
+            f"📊 **Smoothed weather data (Savitzky-Golay) for the last {hours} hours:**", 
+            file=discord.File(buf, "weather_savgol.png")
+        )
+        plt.close()
+    except Exception as e:
+        await ctx.send(f"Error applying Savitzky-Golay filter: {e}")
+
 @bot.command(name="stats")
 async def send_stats(ctx, hours: int = 24):
     """Send statistics about the temperature and humidity data"""

@@ -10,11 +10,11 @@
 DHT dht(DHTPIN, DHTTYPE);
 
 // WiFi credentials
-const char* ssid = "AndroidAP26ED";
-const char* password = "12345678";
+const char* ssid = "Sujinda 2.4G";
+const char* password = "Bc12508847048";
 
 // Server details
-const char* serverUrl = "http://192.168.43.81:8000/update";
+const char* serverUrl = "http://192.168.1.37:8000/update";
 // Data sending interval (milliseconds)
 const unsigned long sendInterval = 60000;  // 1 minute
 unsigned long lastSendTime = 0;
